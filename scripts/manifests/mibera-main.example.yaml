@@ -1,5 +1,20 @@
 # scripts/manifests/mibera-main.example.yaml
 #
+# ⚠ NOTE 2026-04-27: For the Mibera mainnet incident specifically, this
+# script's Alchemy-primary recovery path is OBSOLETED by the canonical cutover
+# plan at:
+#   <micodex-studio>/grimoires/loa/cultivations/mibera/cutover-plan.md
+#
+# The Mibera 10k metadata is fully sovereign in `mibera-codex/miberas/*.md`
+# (frontmatter) + image bytes in thj-assets S3 (`reveal_phase1_images/{hash}.png`
+# per `_codex/data/mibera-image-urls.json`). The operator's directive: "100%
+# from S3, not Alchemy." So the right recovery path is bulk-load from
+# mibera-codex into Postgres, not third-party API fetch.
+#
+# This manifest remains useful as a reference for OTHER defunct-pinner
+# incidents where operator does NOT have a sovereign mibera-codex-equivalent
+# (e.g., a partner project's collection with metadata only on dead Irys).
+#
 # Migration manifest for the MAIN Mibera contract — the actual operational
 # target of the 2026-04-27 mibera-Irys-down incident.
 #

@@ -1,0 +1,26 @@
+slug: pinning-to-freeside
+name: Pinning to Freeside
+
+description: |
+  Use this skill IF tending-storage or migrating-storage requires the primary
+  pin to land on Freeside (Honey Jar's own infra). Vendor implementation for
+  the dual-pin policy's primary slot.
+version: 0.1.0
+
+triggers:
+  - "pin to freeside"
+  - "upload to freeside"
+  - "freeside upload"
+  - "primary pin"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: caution     # touches storage infra; rate-limit-aware
+  effort_hint: small
+  downgrade_allowed: true
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

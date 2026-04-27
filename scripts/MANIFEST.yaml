@@ -1,0 +1,95 @@
+# scripts/MANIFEST.yaml — the-orchard's executable tools
+#
+# Machine-readable declaration of executable scripts in this construct.
+# Agents read this to know what's here, how to invoke, and what comes back —
+# without needing to read source code first.
+#
+# Cross-reference: skills/migrating-storage/SKILL.md is the construct's
+# eventual composed pipeline; the scripts here are stopgap-form executables
+# operators can run directly during incidents.
+
+scripts:
+
+  # ── migrate-from-defunct-pinner — the construct's first cultivation event
+  - name: migrate-from-defunct-pinner
+    description: >
+      Lift an NFT collection's metadata + images off a defunct pinner (e.g. the
+      mibera Irys metadata service offline 2026-04-27) onto thj-assets S3 +
+      CloudFront (Freeside-shape primary) and IPFS (decentralized fallback).
+      Resolves metadata via the dead pinner first (intermittent), then Alchemy
+      NFT API (cached), then operator-provided backup. Emits a per-token
+      manifest of {oldUri → newFreesideUrl → newIpfsCid} the operator hands to
+      protocol for setTokenURI batch calls. The construct's hello-world
+      cultivation event.
+
+    entry: migrate-from-defunct-pinner.ts
+    runtime: npx tsx
+
+    args:
+      - name: --manifest
+        type: path
+        required: true
+        description: "Path to migration manifest YAML (see scripts/manifests/*.example.yaml)"
+      - name: --output
+        type: path
+        required: false
+        default: ./out/migration.result.yaml
+        description: "Where to write the result manifest"
+      - name: --dry-run
+        type: boolean
+        required: false
+        description: "Resolve + verify recovery without uploading; useful for cost/coverage estimation"
+      - name: --concurrency
+        type: integer
+        required: false
+        default: 4
+        description: "Parallel token workers (respect API rate limits — Alchemy + S3)"
+      - name: --ipfs-pinner
+        type: string
+        required: false
+        default: ""
+        description: "One of: pinata | web3-storage | nft-storage | self-hosted (default: skip IPFS leg, single-pin only)"
+
+    output:
+      format: file
+      fields:
+        path: "string — absolute path to result manifest YAML"
+        ready_for_setTokenURI: "boolean — true when all tokens have new_freeside URL"
+        recovered: "integer — tokens with metadata recovered from any fallback source"
+        dual_pinned: "integer — both Freeside + IPFS landed"
+        single_pinned: "integer — only Freeside landed (degraded; dual-pin policy weakened)"
+        failed: "integer — tokens marked unrecoverable; route to the-mint"
+
+    side_effects:
+      - "Reads from gateway.irys.xyz (best-effort), Alchemy NFT API, and operator backup_dir"
+      - "Writes to thj-assets S3 bucket under {collection}/migrated/ prefix"
+      - "Optionally pins to IPFS via configured pinner"
+      - "Writes result manifest to --output path (default ./out/)"
+
+    credentials:
+      - name: ALCHEMY_API_KEY
+        required: true
+        hint: "https://www.alchemy.com — fallback metadata source when dead pinner is offline"
+      - name: AWS_ACCESS_KEY_ID_VM
+        required: true
+        hint: "thj-assets S3 access key (Honey Jar's primary asset infra)"
+      - name: AWS_SECRET_ACCESS_KEY_VM
+        required: true
+        hint: "thj-assets S3 secret key"
+      - name: AWS_REGION
+        required: false
+        hint: "default us-east-1"
+      - name: THJ_ASSETS_BUCKET
+        required: false
+        hint: "default thj-assets"
+      - name: THJ_CDN_BASE
+        required: false
+        hint: "default https://d163aeqznbc6js.cloudfront.net"
+      - name: PINATA_JWT
+        required: false
+        hint: "https://pinata.cloud — required when --ipfs-pinner=pinata"
+
+    danger_level: caution
+    # Touches multiple external APIs (Alchemy, AWS S3, IPFS pinner).
+    # Rate-limit-aware (--concurrency flag). Idempotent re-runs land same content
+    # at same paths under thj-assets prefix — safe to re-run on partial failures.

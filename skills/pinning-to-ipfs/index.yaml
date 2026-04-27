@@ -1,0 +1,27 @@
+slug: pinning-to-ipfs
+name: Pinning to IPFS
+
+description: |
+  Use this skill IF tending-storage or migrating-storage requires the fallback
+  pin to land on IPFS via the configured pinner. Decentralized survival layer
+  in the dual-pin policy.
+version: 0.1.0
+
+triggers:
+  - "pin to ipfs"
+  - "ipfs pin"
+  - "backup pin"
+  - "fallback pin"
+  - "decentralized pin"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: caution
+  effort_hint: small
+  downgrade_allowed: true
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

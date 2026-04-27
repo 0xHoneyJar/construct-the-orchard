@@ -1,0 +1,25 @@
+slug: updating-metadata
+name: Updating Metadata
+
+description: |
+  Use this skill IF a token's JSON metadata needs editing without an image
+  change. JSON-only specialization called by grafting-traits.
+version: 0.1.0
+
+triggers:
+  - "update the metadata"
+  - "fix the trait"
+  - "edit the json"
+  - "correct the name"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: caution
+  effort_hint: small
+  downgrade_allowed: true
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

@@ -1,0 +1,27 @@
+slug: retrospecting-cycle
+name: Retrospecting Cycle
+
+description: |
+  Use this skill IF a cultivation cycle is closing and needs a retro — what
+  landed, what surprised, what the next cycle should know. Reads cycle plan +
+  logs + KEEPER listening; writes the cycle's load-bearing retro markdown.
+version: 0.1.0
+
+triggers:
+  - "retro the cycle"
+  - "close the cycle"
+  - "what did we learn"
+  - "cycle retro"
+  - "/tend retro"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: safe
+  effort_hint: medium
+  downgrade_allowed: false
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

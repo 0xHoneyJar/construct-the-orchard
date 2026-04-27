@@ -1,0 +1,27 @@
+slug: cultivating-cycle
+name: Cultivating Cycle
+
+description: |
+  Use this skill IF a collection needs a coherent operational rhythm planned —
+  drops, grafts, harvests, retros — for the next month or quarter. Events
+  cluster's act-skill.
+version: 0.1.0
+
+triggers:
+  - "open the cycle"
+  - "plan the next cycle"
+  - "cultivation cycle"
+  - "/tend cycle"
+  - "next season"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: safe
+  effort_hint: large
+  downgrade_allowed: false
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

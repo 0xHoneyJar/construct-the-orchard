@@ -1,0 +1,15 @@
+# Expertise: My Construct
+# Defines domain knowledge boundaries for this construct.
+# See: https://constructs.network/docs/identity for guidance
+
+domains:
+  - name: "Primary Domain"
+    depth: 4                    # 1-5 scale (5 = world-class expert)
+                                # NOTE: depth >= 4 surfaces in API expertise_summary
+                                #       and boosts search ranking on constructs.network
+    specializations:
+      - "Core capability area"
+      - "Secondary capability area"
+    boundaries:
+      - "What this construct does NOT cover"
+      - "When to use a different construct"

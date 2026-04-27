@@ -1,0 +1,26 @@
+slug: updating-image
+name: Updating Image
+
+description: |
+  Use this skill IF a token's image needs replacement (and therefore the
+  metadata's image-reference too). Image+metadata specialization called by
+  grafting-traits.
+version: 0.1.0
+
+triggers:
+  - "update the image"
+  - "swap the artwork"
+  - "replace the image"
+  - "regenerate this token"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: caution
+  effort_hint: medium
+  downgrade_allowed: false
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

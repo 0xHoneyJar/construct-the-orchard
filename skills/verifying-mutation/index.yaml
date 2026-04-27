@@ -1,0 +1,25 @@
+slug: verifying-mutation
+name: Verifying Mutation
+
+description: |
+  Use this skill IF a graft needs confirmation that it landed both on-chain
+  and on the pinner. Read-only Verdict emitter; never auto-repairs.
+version: 0.1.0
+
+triggers:
+  - "verify the graft"
+  - "did the mutation land"
+  - "confirm the trait swap"
+  - "check on-chain match"
+
+capabilities:
+  model_tier: haiku
+  danger_level: safe
+  effort_hint: small
+  downgrade_allowed: true
+  execution_hint: parallel
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

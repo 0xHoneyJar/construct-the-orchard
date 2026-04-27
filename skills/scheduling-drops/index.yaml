@@ -1,0 +1,27 @@
+slug: scheduling-drops
+name: Scheduling Drops
+
+description: |
+  Use this skill IF a time-locked operational event needs planning, pre-flight,
+  scheduling, and on-landing verification. Drops are operational moments
+  inside a cultivating-cycle.
+version: 0.1.0
+
+triggers:
+  - "schedule a drop"
+  - "plan a drop"
+  - "time-locked event"
+  - "graft event"
+  - "harvest event"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: caution
+  effort_hint: medium
+  downgrade_allowed: false
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

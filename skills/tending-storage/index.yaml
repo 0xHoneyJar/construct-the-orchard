@@ -1,0 +1,29 @@
+slug: tending-storage
+name: Tending Storage
+
+description: |
+  Use this skill IF user invokes `/tend storage` OR needs to verify dual-pin
+  health across a collection (Freeside primary + IPFS fallback). The orchard's
+  primary skill — substrate maintenance for everything else.
+version: 0.1.0
+
+triggers:
+  - "/tend storage"
+  - "tend the storage"
+  - "verify the pins"
+  - "are the pins alive"
+  - "check pin health"
+  - "health-check the collection"
+  - "tending pass"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: safe
+  effort_hint: medium
+  downgrade_allowed: false
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

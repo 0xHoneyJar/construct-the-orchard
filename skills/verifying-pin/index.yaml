@@ -1,0 +1,25 @@
+slug: verifying-pin
+name: Verifying Pin
+
+description: |
+  Use this skill IF you need to confirm a pinned URI still resolves to
+  matching content. Read-only probe; reports Verdict, never repairs.
+version: 0.1.0
+
+triggers:
+  - "verify the pin"
+  - "is the pin alive"
+  - "probe the uri"
+  - "check pin resolution"
+
+capabilities:
+  model_tier: haiku
+  danger_level: safe
+  effort_hint: small
+  downgrade_allowed: true
+  execution_hint: parallel
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

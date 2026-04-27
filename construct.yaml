@@ -1,0 +1,137 @@
+# construct.yaml — the-orchard
+# CURATOR apprenticeship: stages 4 (streams) + 5 (composition) authored 2026-04-27
+# See: https://constructs.network/docs/schema for full reference
+# Validate: yq eval '.' construct.yaml && ajv validate -s schemas/construct.schema.json
+
+schema_version: 3
+
+name: "the-orchard"
+slug: the-orchard
+version: 0.1.0
+description: "Runs collections after they're alive. Storage as soil, customization as grafting, cultivation cycles as harvest. Persona: LUTHER BURBANK."
+short_description: "Post-export operational running of NFT collections"
+author: 0xHoneyJar
+license: MIT
+type: skill-pack
+visibility: public
+
+domain:
+  - operations
+  - infrastructure
+  - design
+
+# Skills — three act-skills + their cluster skills.
+# Authored cycle 1 (2026-04-27). No deferred migrations — every skill new.
+skills:
+  # storage cluster — substrate; tending-storage is the construct's primary skill
+  - slug: tending-storage
+    path: skills/tending-storage
+  - slug: pinning-to-freeside
+    path: skills/pinning-to-freeside
+  - slug: pinning-to-ipfs
+    path: skills/pinning-to-ipfs
+  - slug: verifying-pin
+    path: skills/verifying-pin
+  - slug: migrating-storage
+    path: skills/migrating-storage
+
+  # customization cluster — grafting is the act-skill
+  - slug: grafting-traits
+    path: skills/grafting-traits
+  - slug: updating-metadata
+    path: skills/updating-metadata
+  - slug: updating-image
+    path: skills/updating-image
+  - slug: verifying-mutation
+    path: skills/verifying-mutation
+
+  # events cluster — cultivating-cycle is the act-skill
+  - slug: cultivating-cycle
+    path: skills/cultivating-cycle
+  - slug: scheduling-drops
+    path: skills/scheduling-drops
+  - slug: harvesting-input
+    path: skills/harvesting-input
+  - slug: retrospecting-cycle
+    path: skills/retrospecting-cycle
+
+commands:
+  - name: tend
+    path: commands/tend.md
+
+# Composition — bidirectional edges. protocol→the-orchard and the-orchard→the-weaver are load-bearing.
+compose_with:
+  - slug: protocol
+    relationship: "Invokes protocol for setTokenURI batch calls + contract state reads after re-pin or graft. The-orchard never reimplements contract calls."
+  - slug: the-mint
+    relationship: "Invokes the-mint when a graft requires new asset generation. The-mint owns generation; the-orchard owns operational running of the result."
+  - slug: the-weaver
+    relationship: "Receives flow routing from the-weaver; surfaces gap-signals back when a cultivation requires a missing capability."
+  - slug: observer
+    relationship: "Hands cultivation-cycle retros to KEEPER's listening; receives Signal callouts when users surface tension with a deployed collection."
+  - slug: herald
+    relationship: "Composes for drop + harvest announcements. The-orchard sends the cultivation moment; herald shapes the announcement."
+  - slug: social-oracle
+    relationship: "Composes (via herald) for Discord + Twitter broadcasts of drops, retros, community-input cycles."
+
+# Grimoire interface — paths are the wiring.
+composition_paths:
+  writes:
+    - grimoires/{product}/cultivations/      # cycle plans, drop manifests, retros
+    - grimoires/{product}/pins/              # pin manifests (CID/URI per token, dual-pin status)
+    - grimoires/{product}/mutations/         # log of post-mint customizations (graft history)
+    - grimoires/{product}/proposals/         # construct proposals when cultivation surfaces capability gaps
+  reads:
+    - grimoires/{product}/flows/             # the-weaver's flow specs that route operational intents here
+    - grimoires/{product}/feedback/keeper/   # KEEPER's listening output for retros
+    - grimoires/{product}/intents.yaml       # the named intent vocabulary
+    - grimoires/{product}/context/           # PRD, deploy state — needed for cultivation planning
+
+# Stream signature (operator decision 2026-04-27)
+streams:
+  reads:
+    - Intent          # named operational intents (re-pin, graft, schedule-drop, run-retro)
+    - Signal          # gap callouts + cultural signals from observer (e.g. "users want trait swap")
+    - Verdict         # security/audit verdicts before production-grade re-pins or contract calls
+  writes:
+    - Artifact        # pin manifests, mutation logs, cycle plans + retros
+    - Signal          # cultivation events (drop scheduled, cycle complete, gap surfaced)
+    - Verdict         # verifying-pin and verifying-mutation results
+
+repository:
+  url: https://github.com/0xHoneyJar/construct-the-orchard.git
+  homepage: https://constructs.network/constructs/the-orchard
+
+events:
+  emits:
+    - type: the-orchard.pin.dual_landed
+      description: Emitted when a token's metadata + image successfully dual-pin (Freeside primary + IPFS fallback)
+    - type: the-orchard.pin.single_landed
+      description: Emitted when only one of the two pins succeeded — degraded but live
+    - type: the-orchard.mutation.committed
+      description: Emitted when a post-mint customization (graft) lands on-chain AND on-pinner
+    - type: the-orchard.cycle.opened
+      description: Emitted when a new cultivation cycle (drop, harvest, retro) begins
+    - type: the-orchard.cycle.retro_authored
+      description: Emitted when a cycle retro is written; KEEPER consumes this for listening
+    - type: the-orchard.gap.surfaced
+      description: Emitted when a cultivation references a missing construct or skill
+    - type: the-orchard.migration.token_moved
+      description: Emitted per-token during migrate-from-defunct-pinner runs (mibera-incident-shape work)
+  consumes:
+    - type: the-weaver.flow.authored
+      description: Reads new flow specs that route operational intents here
+    - type: observer.canvas.shaped
+      description: Reads KEEPER's listening output to inform next cycle plan
+    - type: protocol.deploy.completed
+      description: Triggers initial dual-pin pass for a freshly deployed collection
+
+# Identity
+identity:
+  persona: identity/persona.yaml
+  handles:
+    - LUTHER_BURBANK
+
+quick_start:
+  command: /tend
+  description: "Run a tending pass on the collection — verify pins, surface drift, plan the next cultivation cycle"

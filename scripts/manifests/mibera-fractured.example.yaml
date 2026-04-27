@@ -1,0 +1,41 @@
+# scripts/manifests/mibera-fractured.example.yaml
+#
+# Example migration manifest for the mibera FRACTURED collection.
+# Triggered by: mibera Irys metadata service offline 2026-04-27.
+#
+# Usage:
+#   npx tsx scripts/migrate-from-defunct-pinner.ts \
+#     --manifest scripts/manifests/mibera-fractured.example.yaml \
+#     --output ./out/mibera-fractured.result.yaml \
+#     --concurrency 4 \
+#     --ipfs-pinner pinata \
+#     [--dry-run]
+#
+# COPY this file before editing — keep the example clean for the next operator.
+# Adjust contract_address + token_range + irys_tx_id per the specific FRACTURED
+# variant being migrated. Recon 2026-04-27 found 10+ FRACTURED variants under
+# 0x6666397DFe9a8c469BF65dc744CB1C733416c420 (main Mibera) — see
+# mibera-interface/constants/contracts.ts for the full list.
+
+collection: mibera-fractured-v1
+contract_address: "0x6666397DFe9a8c469BF65dc744CB1C733416c420"
+chain: ethereum
+token_range:
+  start: 0
+  end: 999
+
+# The dead pinner — gateway.irys.xyz/mutable/{txId}/{tokenId}
+# This pattern is from mibera-dimensions/lib/utils/mibera-metadata.ts:12-13
+dead_pinner_pattern: "https://gateway.irys.xyz/mutable/{txId}/{tokenId}"
+irys_tx_id: "6MqM65yemqQpjVe4rCGxEJfsVA4dJszFhL3suzPGzH56"
+
+# Fallback resolution order. The script tries each source in turn for each token.
+fallback_sources:
+  - irys-direct        # the dead pinner is intermittent, not fully offline — try it first
+  - alchemy            # alchemy NFT API caches metadata; survives the pinner outage
+  - backup             # operator-provided local backup directory (last resort)
+
+alchemy_chain: eth-mainnet
+
+# Optional: operator-provided local backup. Leave unset if no backup exists.
+# backup_dir: /Users/zksoju/Documents/mibera-backup/fractured-v1

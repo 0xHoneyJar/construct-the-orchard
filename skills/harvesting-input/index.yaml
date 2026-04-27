@@ -1,0 +1,26 @@
+slug: harvesting-input
+name: Harvesting Input
+
+description: |
+  Use this skill IF a cultivation cycle's harvest window is open and community
+  proposals need structuring into a queue. Reads Discord/Twitter/governance
+  sources; writes a structured proposal manifest.
+version: 0.1.0
+
+triggers:
+  - "harvest the input"
+  - "collect proposals"
+  - "structure community input"
+  - "review the suggestions"
+
+capabilities:
+  model_tier: haiku
+  danger_level: safe
+  effort_hint: medium
+  downgrade_allowed: true
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

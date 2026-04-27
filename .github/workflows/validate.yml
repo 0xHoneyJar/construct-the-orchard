@@ -1,0 +1,437 @@
+name: Validate Construct
+
+on:
+  push:
+    branches: [main, "**"]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Validation level override (0=dev, 1=quality, 2=publish)"
+        required: false
+        default: "2"
+        type: choice
+        options: ["0", "1", "2"]
+
+jobs:
+  # ─────────────────────────────────────────────────
+  # Level 0: Development — fast sanity checks
+  # Runs on: every push
+  # Goal: catch the most common mistakes in <10 seconds
+  # ─────────────────────────────────────────────────
+  level-0:
+    name: "L0: Development"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          YQ_VERSION="v4.44.6"
+          YQ_SHA256="0c2b24e645b57d8e7c0566d18643a6d4f5580feeea3878127354a46f2a1e4598"
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum --check --strict
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Validate construct.yaml is valid YAML
+        run: yq eval '.' construct.yaml > /dev/null
+
+      - name: Check required fields exist
+        run: |
+          errors=0
+          for field in name slug version description; do
+            val=$(yq ".$field" construct.yaml)
+            if [[ "$val" == "null" || -z "$val" ]]; then
+              echo "::error::Missing required field in construct.yaml: $field"
+              errors=$((errors + 1))
+            fi
+          done
+          if [[ $errors -gt 0 ]]; then
+            exit 1
+          fi
+          echo "✓ All required fields present"
+
+      - name: Reject placeholder strings
+        run: |
+          errors=0
+          placeholders=("TODO:" "My Construct" "your-name" "your-org" "example-skill" "A brief description of what this construct does")
+
+          name=$(yq '.name' construct.yaml)
+          slug=$(yq '.slug' construct.yaml)
+          description=$(yq '.description' construct.yaml)
+          author=$(yq '.author' construct.yaml)
+
+          # Check each required field against placeholder patterns
+          for placeholder in "${placeholders[@]}"; do
+            for field_name in name slug description author; do
+              val=$(yq ".$field_name" construct.yaml)
+              if [[ "$val" == *"$placeholder"* ]]; then
+                echo "::error::Placeholder text found in construct.yaml $field_name: '$placeholder'"
+                errors=$((errors + 1))
+              fi
+            done
+          done
+
+          # Check repository fields for placeholder values
+          repo_url=$(yq '.repository.url' construct.yaml)
+          repo_homepage=$(yq '.repository.homepage' construct.yaml)
+          for placeholder in "${placeholders[@]}"; do
+            if [[ "$repo_url" != "null" && "$repo_url" == *"$placeholder"* ]]; then
+              echo "::error::Placeholder text found in construct.yaml repository.url: '$placeholder'"
+              errors=$((errors + 1))
+            fi
+            if [[ "$repo_homepage" != "null" && "$repo_homepage" == *"$placeholder"* ]]; then
+              echo "::error::Placeholder text found in construct.yaml repository.homepage: '$placeholder'"
+              errors=$((errors + 1))
+            fi
+          done
+
+          # Check skill slugs for placeholder
+          skill_count=$(yq '.skills | length' construct.yaml)
+          for i in $(seq 0 $((skill_count - 1))); do
+            skill_slug=$(yq ".skills[$i].slug" construct.yaml)
+            if [[ "$skill_slug" == "example-skill" ]]; then
+              echo "::error::Placeholder skill slug 'example-skill' — rename to your actual skill"
+              errors=$((errors + 1))
+            fi
+          done
+
+          if [[ $errors -gt 0 ]]; then
+            exit 1
+          fi
+          echo "✓ No placeholder strings detected"
+
+      - name: Validate skill directories exist
+        run: |
+          errors=0
+          skill_count=$(yq '.skills | length' construct.yaml)
+
+          if [[ "$skill_count" -lt 1 ]]; then
+            echo "::error::construct.yaml must declare at least one skill"
+            exit 1
+          fi
+
+          for i in $(seq 0 $((skill_count - 1))); do
+            slug=$(yq ".skills[$i].slug" construct.yaml)
+            path=$(yq ".skills[$i].path" construct.yaml)
+
+            # Reject path traversal
+            if [[ "$path" == *".."* || "$path" == /* ]]; then
+              echo "::error::Skill $slug has path traversal or absolute path: $path"
+              errors=$((errors + 1))
+              continue
+            fi
+
+            if [[ ! -d "$path" ]]; then
+              echo "::error::Skill directory not found: $path (slug: $slug)"
+              errors=$((errors + 1))
+              continue
+            fi
+            if [[ ! -f "$path/SKILL.md" ]]; then
+              echo "::error::Missing SKILL.md for skill: $slug (expected at $path/SKILL.md)"
+              errors=$((errors + 1))
+            else
+              line_count=$(wc -l < "$path/SKILL.md")
+              if [[ "$line_count" -lt 15 ]]; then
+                echo "::error::SKILL.md for $slug is only $line_count lines (minimum 15) — flesh out the skeleton"
+                errors=$((errors + 1))
+              fi
+            fi
+            if [[ ! -f "$path/index.yaml" ]]; then
+              echo "::error::Missing index.yaml for skill: $slug (expected at $path/index.yaml)"
+              errors=$((errors + 1))
+            fi
+          done
+
+          if [[ $errors -gt 0 ]]; then
+            exit 1
+          fi
+          echo "✓ All skill directories valid"
+
+      - name: Validate CLAUDE.md exists and has content
+        run: |
+          if [[ ! -f "CLAUDE.md" ]]; then
+            echo "::error::CLAUDE.md not found — this is the construct's identity document"
+            exit 1
+          fi
+          line_count=$(wc -l < "CLAUDE.md")
+          if [[ "$line_count" -lt 10 ]]; then
+            echo "::error::CLAUDE.md is only $line_count lines (minimum 10) — customize from the template"
+            exit 1
+          fi
+          echo "✓ CLAUDE.md present ($line_count lines)"
+
+  # ─────────────────────────────────────────────────
+  # Level 1: Quality — thorough schema + content checks
+  # Runs on: PRs to main
+  # Goal: validate against schemas, check skill quality
+  # ─────────────────────────────────────────────────
+  level-1:
+    name: "L1: Quality"
+    needs: level-0
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.level >= '1')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          YQ_VERSION="v4.44.6"
+          YQ_SHA256="0c2b24e645b57d8e7c0566d18643a6d4f5580feeea3878127354a46f2a1e4598"
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum --check --strict
+          sudo chmod +x /usr/local/bin/yq
+          sudo npm install -g ajv-cli ajv-formats 2>/dev/null
+
+      - name: Validate construct.yaml against schema
+        run: |
+          # Convert construct.yaml to JSON for ajv
+          yq -o=json construct.yaml > /tmp/construct.json
+          ajv validate -s schemas/construct.schema.json -d /tmp/construct.json --spec=draft2020 || {
+            echo "::error::construct.yaml does not conform to schemas/construct.schema.json"
+            exit 1
+          }
+          echo "✓ construct.yaml validates against schema"
+
+      - name: Validate persona.yaml against schema
+        run: |
+          persona_path=$(yq '.identity.persona' construct.yaml)
+          if [[ "$persona_path" == "null" || -z "$persona_path" ]]; then
+            echo "::error::identity.persona path not set in construct.yaml"
+            exit 1
+          fi
+          # Reject path traversal
+          if [[ "$persona_path" == *".."* || "$persona_path" == /* ]]; then
+            echo "::error::identity.persona contains path traversal or absolute path: $persona_path"
+            exit 1
+          fi
+          if [[ ! -f "$persona_path" ]]; then
+            echo "::error::Persona file not found: $persona_path"
+            exit 1
+          fi
+          yq -o=json "$persona_path" > /tmp/persona.json
+          ajv validate -s schemas/persona.schema.yaml -d /tmp/persona.json --spec=draft2020 || {
+            echo "::error::$persona_path does not conform to schemas/persona.schema.yaml"
+            exit 1
+          }
+          echo "✓ persona.yaml validates against schema"
+
+      - name: Validate expertise.yaml against schema
+        run: |
+          expertise_path=$(yq '.identity.expertise' construct.yaml)
+          if [[ "$expertise_path" == "null" || -z "$expertise_path" ]]; then
+            echo "::error::identity.expertise path not set in construct.yaml"
+            exit 1
+          fi
+          # Reject path traversal
+          if [[ "$expertise_path" == *".."* || "$expertise_path" == /* ]]; then
+            echo "::error::identity.expertise contains path traversal or absolute path: $expertise_path"
+            exit 1
+          fi
+          if [[ ! -f "$expertise_path" ]]; then
+            echo "::error::Expertise file not found: $expertise_path"
+            exit 1
+          fi
+          yq -o=json "$expertise_path" > /tmp/expertise.json
+          ajv validate -s schemas/expertise.schema.yaml -d /tmp/expertise.json --spec=draft2020 || {
+            echo "::error::$expertise_path does not conform to schemas/expertise.schema.yaml"
+            exit 1
+          }
+          echo "✓ expertise.yaml validates against schema"
+
+      - name: Validate skill capability metadata
+        run: |
+          errors=0
+          skill_count=$(yq '.skills | length' construct.yaml)
+
+          required_caps="model_tier danger_level effort_hint execution_hint"
+
+          for i in $(seq 0 $((skill_count - 1))); do
+            slug=$(yq ".skills[$i].slug" construct.yaml)
+            path=$(yq ".skills[$i].path" construct.yaml)
+            index="$path/index.yaml"
+
+            if [[ ! -f "$index" ]]; then
+              continue  # L0 already catches missing index.yaml
+            fi
+
+            for cap in $required_caps; do
+              val=$(yq ".capabilities.$cap" "$index")
+              if [[ "$val" == "null" || -z "$val" ]]; then
+                echo "::error::Skill $slug missing capabilities.$cap in index.yaml"
+                errors=$((errors + 1))
+              fi
+            done
+
+            # Validate enum values
+            tier=$(yq '.capabilities.model_tier' "$index")
+            if [[ "$tier" != "null" ]] && ! echo "sonnet opus haiku" | grep -qw "$tier"; then
+              echo "::error::Skill $slug: capabilities.model_tier must be sonnet|opus|haiku (got: $tier)"
+              errors=$((errors + 1))
+            fi
+
+            danger=$(yq '.capabilities.danger_level' "$index")
+            if [[ "$danger" != "null" ]] && ! echo "safe moderate high critical" | grep -qw "$danger"; then
+              echo "::error::Skill $slug: capabilities.danger_level must be safe|moderate|high|critical (got: $danger)"
+              errors=$((errors + 1))
+            fi
+
+            effort=$(yq '.capabilities.effort_hint' "$index")
+            if [[ "$effort" != "null" ]] && ! echo "small medium large" | grep -qw "$effort"; then
+              echo "::error::Skill $slug: capabilities.effort_hint must be small|medium|large (got: $effort)"
+              errors=$((errors + 1))
+            fi
+
+            exec_hint=$(yq '.capabilities.execution_hint' "$index")
+            if [[ "$exec_hint" != "null" ]] && ! echo "parallel sequential" | grep -qw "$exec_hint"; then
+              echo "::error::Skill $slug: capabilities.execution_hint must be parallel|sequential (got: $exec_hint)"
+              errors=$((errors + 1))
+            fi
+          done
+
+          if [[ $errors -gt 0 ]]; then
+            exit 1
+          fi
+          echo "✓ All skill capabilities valid"
+
+      - name: Validate SKILL.md required sections
+        run: |
+          errors=0
+          skill_count=$(yq '.skills | length' construct.yaml)
+          required_sections="Trigger Workflow Boundaries"
+
+          for i in $(seq 0 $((skill_count - 1))); do
+            slug=$(yq ".skills[$i].slug" construct.yaml)
+            path=$(yq ".skills[$i].path" construct.yaml)
+            skillmd="$path/SKILL.md"
+
+            if [[ ! -f "$skillmd" ]]; then
+              continue  # L0 already catches missing SKILL.md
+            fi
+
+            for section in $required_sections; do
+              if ! grep -qE "^##\s+.*${section}" "$skillmd"; then
+                echo "::error::SKILL.md for $slug missing required section: ## $section"
+                errors=$((errors + 1))
+              fi
+            done
+          done
+
+          if [[ $errors -gt 0 ]]; then
+            exit 1
+          fi
+          echo "✓ All SKILL.md files have required sections"
+
+  # ─────────────────────────────────────────────────
+  # Level 2: Publishing — release-quality gate
+  # Runs on: release tags, manual trigger
+  # Goal: if this passes, the construct is ready for others
+  # ─────────────────────────────────────────────────
+  level-2:
+    name: "L2: Publishing"
+    needs: level-1
+    if: >-
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.level >= '2')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          YQ_VERSION="v4.44.6"
+          YQ_SHA256="0c2b24e645b57d8e7c0566d18643a6d4f5580feeea3878127354a46f2a1e4598"
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum --check --strict
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Verify quick_start references existing skill
+        run: |
+          qs_cmd=$(yq '.quick_start.command' construct.yaml)
+          if [[ "$qs_cmd" == "null" || -z "$qs_cmd" ]]; then
+            echo "::error::quick_start.command is required for publishing"
+            exit 1
+          fi
+
+          # Strip leading / to get command name
+          cmd_name="${qs_cmd#/}"
+
+          # Check if it matches a declared command
+          found=false
+          cmd_count=$(yq '.commands | length' construct.yaml)
+          for i in $(seq 0 $((cmd_count - 1))); do
+            name=$(yq ".commands[$i].name" construct.yaml)
+            if [[ "$name" == "$cmd_name" ]]; then
+              found=true
+              break
+            fi
+          done
+
+          if [[ "$found" != "true" ]]; then
+            echo "::error::quick_start.command '$qs_cmd' does not match any declared command"
+            exit 1
+          fi
+          echo "✓ quick_start.command references valid command"
+
+      - name: Verify identity narrative exists
+        run: |
+          # Look for .md files in identity/ that aren't schema files
+          narrative_files=$(find identity/ -name "*.md" -type f 2>/dev/null | head -5)
+          if [[ -z "$narrative_files" ]]; then
+            echo "::error::No identity narrative (.md) files found in identity/ — add at least one (e.g., identity/ALEXANDER.md)"
+            exit 1
+          fi
+
+          # Check that at least one is non-trivial
+          for f in $narrative_files; do
+            line_count=$(wc -l < "$f")
+            if [[ "$line_count" -ge 10 ]]; then
+              echo "✓ Identity narrative found: $f ($line_count lines)"
+              exit 0
+            fi
+          done
+          echo "::error::All identity narrative files are too short (minimum 10 lines)"
+          exit 1
+
+      - name: Reject TODO/FIXME in all files
+        run: |
+          errors=0
+          # Search for TODO: and FIXME: in tracked files, excluding CI and schemas
+          matches=$(grep -rn "TODO:\|FIXME:" --include="*.yaml" --include="*.md" --include="*.json" \
+            --exclude-dir=".github" --exclude-dir="schemas" --exclude-dir="node_modules" . 2>/dev/null || true)
+
+          if [[ -n "$matches" ]]; then
+            echo "::error::Files contain TODO:/FIXME: markers — resolve before publishing:"
+            echo "$matches"
+            exit 1
+          fi
+          echo "✓ No TODO/FIXME markers found"
+
+      - name: Validate semver format
+        run: |
+          version=$(yq '.version' construct.yaml)
+          if ! echo "$version" | grep -qE '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'; then
+            echo "::error::Version '$version' is not valid semver"
+            exit 1
+          fi
+          echo "✓ Version $version is valid semver"
+
+      - name: Final publish readiness summary
+        run: |
+          echo "═══════════════════════════════════════"
+          echo "  CONSTRUCT PUBLISH READINESS: PASSED"
+          echo "═══════════════════════════════════════"
+          echo ""
+          echo "  Name:    $(yq '.name' construct.yaml)"
+          echo "  Slug:    $(yq '.slug' construct.yaml)"
+          echo "  Version: $(yq '.version' construct.yaml)"
+          echo "  Skills:  $(yq '.skills | length' construct.yaml)"
+          echo ""
+          echo "  This construct is ready for distribution."
+          echo "═══════════════════════════════════════"

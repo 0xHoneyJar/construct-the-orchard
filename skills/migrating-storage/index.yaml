@@ -1,0 +1,27 @@
+slug: migrating-storage
+name: Migrating Storage
+
+description: |
+  Use this skill IF a pinner under a live collection is offline or degrading
+  (mibera-shape incident) and the collection's metadata + images need to lift
+  onto Freeside + IPFS dual-pin. Recovery skill.
+version: 0.1.0
+
+triggers:
+  - "migrate the storage"
+  - "the metadata service is down"
+  - "lift this collection off"
+  - "rescue the pins"
+  - "mibera incident"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: caution     # touches multiple external APIs; rate-limit-aware
+  effort_hint: large
+  downgrade_allowed: false
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

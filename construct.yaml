@@ -36,6 +36,8 @@ skills:
     path: skills/migrating-storage
   - slug: staging-recovery
     path: skills/staging-recovery
+  - slug: serving-metadata
+    path: skills/serving-metadata
 
   # customization cluster — grafting is the act-skill
   - slug: grafting-traits

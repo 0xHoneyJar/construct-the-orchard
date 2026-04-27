@@ -1,0 +1,28 @@
+slug: staging-recovery
+name: Staging Recovery
+
+description: |
+  Use this skill IF metadata from a defunct/unreliable source (dead Irys, dead
+  IPFS CIDs, sunset vendor) needs to be lifted onto the operator's own
+  Postgres + API route infrastructure before an on-chain baseURI rotation.
+  Sibling to migrating-storage; opinionated about API-mediated staging.
+version: 0.1.0
+
+triggers:
+  - "stage the recovery"
+  - "lift the metadata"
+  - "stage in honeyroad"
+  - "/tend stage"
+  - "rebuild this collection's metadata in our infra"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: caution     # touches Postgres + multiple external APIs
+  effort_hint: large
+  downgrade_allowed: false
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

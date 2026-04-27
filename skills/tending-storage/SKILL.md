@@ -9,6 +9,13 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 
 The-orchard's primary skill. Storage is soil. Without sound soil, no graft takes, no harvest comes. `tending-storage` is the recurring, attentive act of keeping the collection's metadata + image substrate alive — not just *pinned*, but *resolvable*, *redundant*, and *ready to be grafted onto*.
 
+> **Architectural note (2026-04-27).** For Honey Jar's actual production reality, the substrate is layered:
+> - **Primary metadata substrate**: Postgres in honeyroad (live serving via `/api/{collection}/[tokenId]/route.ts`)
+> - **Backup-of-record**: S3 export (Lambda-tarball pattern) of the metadata table monthly
+> - **Image substrate**: thj-assets S3 + CloudFront (`d163aeqznbc6js.cloudfront.net`, `assets.mibera.io`)
+>
+> The honeyroad API IS the Freeside-equivalent role for metadata. The `pinning-to-freeside` skill's `FreesideClient` interface routes to honeyroad for metadata, to thj-assets for images. Tending checks all three layers.
+
 > *"The right place to start an orchard is the soil. Test it. Amend it. Test it again before a single tree goes in."* — Burbank, paraphrased; see `identity/LUTHER_BURBANK.md`
 
 ## Trigger

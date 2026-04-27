@@ -2,25 +2,63 @@
 /**
  * migrate-from-defunct-pinner.ts
  *
- * The-orchard's first cultivation event. When the pinner under a live collection
- * goes dark — e.g. the mibera Irys metadata service offline 2026-04-27 — this
- * script lifts the collection's metadata + images onto Honey Jar's own infra
- * (thj-assets S3 + CloudFront, Freeside-shaped) AND IPFS (decentralized fallback)
- * per the dual-pin policy.
+ * The-orchard's recovery skill executable. When the substrate under a live
+ * collection goes dark — e.g. the mibera Irys metadata service offline
+ * 2026-04-27 — this script lifts the collection's metadata + images onto
+ * Honey Jar's own infra (thj-assets S3 + CloudFront) AND IPFS (decentralized
+ * fallback) per the dual-pin policy.
  *
- * Stopgap form. The construct's eventual `migrating-storage` skill will replace
- * this with a composed pipeline. Until then, operator runs:
+ * Stopgap form. The construct's `migrating-storage` skill (now composing with
+ * `serving-metadata` + `rotating-baseURI`) replaces this with a pipeline.
+ * Until then, operator runs:
  *
  *   npx tsx scripts/migrate-from-defunct-pinner.ts \
  *     --manifest scripts/manifests/mibera-fractured.yaml \
  *     --output ./out/mibera-migration.result.yaml \
  *     [--dry-run] [--concurrency 4] [--ipfs-pinner pinata]
  *
+ * --------------------------------------------------------------------------
+ * AUDIT UPDATE 2026-04-27 — what changed since the construct's first publish:
+ * --------------------------------------------------------------------------
+ *
+ * On-chain audit (cast on Berachain mainnet) revealed:
+ *
+ *  - **Mibera main contract** (0x6666...c420) is the actual urgent target.
+ *    tokenURI returns gateway.irys.xyz/mutable/6Mq.../{id} — DEAD.
+ *    No metadata table exists for this collection in mibera-honeyroad's
+ *    Drizzle schema yet. Recovery → Postgres-row population → new route
+ *    `/api/mibera/[tokenId]` → setBaseURI rotation. See
+ *    `grimoires/loa/proposals/mibera-cutover-dryrun.md` for the full plan.
+ *
+ *  - **FRACTURED V1-V10** are on IPFS (each variant a unique CIDv1, e.g.
+ *    `ipfs://bafybeiha7y2tbfwasplv6diej2judiu2yzjqmpik3ipjccqay5kmlwzhv4/`).
+ *    Status: alive on ipfs.io, partial on Pinata, 000 on Cloudflare.
+ *    Preventive migration recommended (next mibera-shape outage hits these).
+ *
+ *  - **Tarot, VM_Mishadows, Candies, GIF** all already on the canonical
+ *    pattern (Postgres row → honeyroad.xyz/api/.../[tokenId] → CloudFront
+ *    image). No action needed.
+ *
+ *  - **All contracts use setBaseURI(prefix)**, not per-token setTokenURI.
+ *    Per-token graft = Postgres UPDATE only, no contract call. Cutover =
+ *    one setBaseURI tx per collection.
+ *
+ * --------------------------------------------------------------------------
+ * Implementation status: this script targets the OLD model (recover-and-pin).
+ * For the NEW canonical model (recover → Postgres → route → setBaseURI), see
+ * the `serving-metadata` and `rotating-baseURI` skills in this construct, and
+ * the dry-run plan at grimoires/loa/proposals/mibera-cutover-dryrun.md.
+ *
+ * The script is still useful for: raw metadata recovery (multi-source loop),
+ * IPFS dual-pin (when policy applies), and S3 backup-of-record (Lambda
+ * tarball pattern from storage diagnostic). The "FreesideClient" abstraction
+ * remains correct — just routes to thj-assets today and could route to a
+ * Postgres-write client in the future canonical impl.
+ * --------------------------------------------------------------------------
+ *
  * Architecture note (recon 2026-04-27): "Freeside" in operator vocabulary maps
  * today to the existing `thj-assets` S3 bucket + CloudFront CDN. Freeside
- * proper is billing/settlement infra; metadata/asset hosting is S3. This script
- * targets the operationally-real backend. If a true Freeside metadata API
- * lands later, swap the FreesideClient impl below — interface is preserved.
+ * proper is billing/settlement infra; metadata/asset hosting is S3 + Postgres.
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises'

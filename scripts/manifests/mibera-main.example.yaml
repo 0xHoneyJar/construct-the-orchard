@@ -1,0 +1,57 @@
+# scripts/manifests/mibera-main.example.yaml
+#
+# Migration manifest for the MAIN Mibera contract — the actual operational
+# target of the 2026-04-27 mibera-Irys-down incident.
+#
+# Verified on-chain 2026-04-27:
+#   tokenURI(1) = https://gateway.irys.xyz/mutable/6MqM65yemqQpjVe4rCGxEJfsVA4dJszFhL3suzPGzH56/1
+#   totalSupply = 10000 (fully minted)
+#   Irys gateway = 0 bytes response (dead)
+#   Alchemy NFT API has full cached metadata + image for all 10k tokens
+#
+# Usage:
+#   cd ~/Documents/GitHub/construct-the-orchard/scripts/
+#   npx tsx migrate-from-defunct-pinner.ts \
+#     --manifest manifests/mibera-main.example.yaml \
+#     --output ./out/mibera-main.result.yaml \
+#     --concurrency 4 \
+#     [--dry-run]
+#
+# Required env:
+#   ALCHEMY_API_KEY         (https://www.alchemy.com — Berachain mainnet support)
+#   AWS_ACCESS_KEY_ID_VM    (thj-assets S3 write access)
+#   AWS_SECRET_ACCESS_KEY_VM
+#
+# Optional:
+#   AWS_REGION              (default us-east-1; thj-assets is us-west-2)
+#   THJ_ASSETS_BUCKET       (default thj-assets)
+#   THJ_CDN_BASE            (default https://d163aeqznbc6js.cloudfront.net)
+#
+# After successful migration, the resulting manifest at --output declares each
+# tokenId's new freeside_url. Operator then runs ONE setBaseURI tx pointing the
+# Mibera contract at the new CDN prefix. See:
+#   grimoires/loa/cultivations/mibera/cutover-plan.md
+
+collection: Mibera
+contract_address: "0x6666397DFe9a8c469BF65dc744CB1C733416c420"
+chain: ethereum    # Berachain — alchemy_chain selects the actual network
+token_range:
+  start: 1
+  end: 10000
+
+# The dead pinner pattern (verified 2026-04-27 returns 0 bytes)
+dead_pinner_pattern: "https://gateway.irys.xyz/mutable/{txId}/{tokenId}"
+irys_tx_id: "6MqM65yemqQpjVe4rCGxEJfsVA4dJszFhL3suzPGzH56"
+
+# Recovery source order. The dead pinner is intermittent so worth probing first
+# (some responses still trickle); Alchemy NFT API has the canonical cached
+# metadata for ALL Berachain Mibera tokens.
+fallback_sources:
+  - irys-direct
+  - alchemy
+
+# Berachain's Alchemy network identifier
+alchemy_chain: berachain-mainnet
+
+# No operator backup configured — Alchemy cache is the canonical source
+# backup_dir: /Users/zksoju/path/to/mibera-backup-if-it-exists

@@ -1,0 +1,29 @@
+slug: rotating-baseURI
+name: Rotating baseURI
+
+description: |
+  Use this skill IF a collection's on-chain baseURI points at a stale or
+  defunct source (dead pinner, sunset domain, deprecated route) and needs to
+  cut over to a verified new substrate. Pre-flight tests the new URI
+  end-to-end; manifest + cast command handed to operator/protocol;
+  post-flight invalidates caches + verifies on-chain rotation took.
+version: 0.1.0
+
+triggers:
+  - "rotate the baseURI"
+  - "cut over the metadata pointer"
+  - "swap baseURI to new substrate"
+  - "post-migration cutover"
+  - "the dead pinner needs replacing on-chain"
+
+capabilities:
+  model_tier: sonnet
+  danger_level: caution     # composes a contract-write tx; the actual write happens elsewhere
+  effort_hint: medium
+  downgrade_allowed: false
+  execution_hint: sequential
+  requires:
+    native_runtime: false
+    tool_calling: true
+    thinking_traces: false
+    vision: false

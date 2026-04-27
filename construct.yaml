@@ -34,6 +34,8 @@ skills:
     path: skills/verifying-pin
   - slug: migrating-storage
     path: skills/migrating-storage
+  - slug: staging-recovery
+    path: skills/staging-recovery
 
   # customization cluster — grafting is the act-skill
   - slug: grafting-traits
@@ -45,7 +47,7 @@ skills:
   - slug: verifying-mutation
     path: skills/verifying-mutation
 
-  # events cluster — cultivating-cycle is the act-skill
+  # events cluster — cultivating-cycle is the act-skill; rotating-baseURI is the recovery-cycle commit
   - slug: cultivating-cycle
     path: skills/cultivating-cycle
   - slug: scheduling-drops
@@ -54,6 +56,8 @@ skills:
     path: skills/harvesting-input
   - slug: retrospecting-cycle
     path: skills/retrospecting-cycle
+  - slug: rotating-baseURI
+    path: skills/rotating-baseURI
 
 commands:
   - name: tend

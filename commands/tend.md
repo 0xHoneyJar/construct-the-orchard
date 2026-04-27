@@ -14,6 +14,8 @@ description: Tending pass for the-orchard — verify dual-pin health, surface dr
 | `/tend storage --pin ipfs <token>` | `pinning-to-ipfs` |
 | `/tend verify <token>` | `verifying-pin` |
 | `/tend migrate` · "the metadata service is down" | `migrating-storage` |
+| `/tend stage` · "stage the recovery" · "lift the metadata into honeyroad" | `staging-recovery` |
+| `/tend rotate` · "rotate the baseURI" · "point the contract at new endpoint" | `rotating-baseURI` |
 | `/tend graft <token>` · "swap the trait" | `grafting-traits` |
 | `/tend metadata <token>` | `updating-metadata` |
 | `/tend image <token>` | `updating-image` |

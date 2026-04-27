@@ -91,6 +91,51 @@ hosting is S3. The script targets the operationally-real backend. If a true
 Freeside metadata API lands later, swap the `ThjAssetsClient` impl in the
 script — the `FreesideClient` interface is preserved.
 
+### Single-pin reality for 0xHoneyJar (BRIDGEBUILD diagnostic 2026-04-27)
+
+The construct's design declares "dual-pin policy" (Freeside primary + IPFS
+fallback). The 0xHoneyJar org's actual reality:
+
+- ✅ thj-assets S3 + CloudFront — operationally real, primary
+- ❌ IPFS write integration — **none**. Pinata, web3.storage, nft.storage,
+  lighthouse: zero org repos have write integration. Only gateway *reads*.
+
+So in practice, `--ipfs-pinner` is unset for the org's runs and the migration
+operates in single-pin mode (Freeside-shape only). This is acceptable because:
+
+1. Alchemy CDN holds a parallel image cache for every token
+   (`https://nft-cdn.alchemy.com/{network}/{hash}`) — de-facto secondary
+2. The mibera incident demonstrated Irys (decentralized) failed first;
+   centralized infra (Alchemy + thj-assets) survived. Decentralization isn't
+   the right mitigation here.
+3. Multi-region thj-assets replication (us-west-2 → us-east-1) is a more
+   actionable insurance policy than IPFS pinning.
+
+Future cycle should commit to one of:
+  (a) Pin to Pinata — bring up first IPFS-write integration in 0xHoneyJar
+  (b) Replicate thj-assets to a second region/account — sovereign fallback
+  (c) Document single-pin + Alchemy-CDN as the policy
+
+Tracked in `grimoires/loa/proposals/storage-architecture-diagnostic.md` Q5.
+
+## Mibera mainnet incident (2026-04-27 active)
+
+The MAIN Mibera contract (`0x6666397DFe9a8c469BF65dc744CB1C733416c420`) on
+Berachain has 10k holders, all currently broken. Its baseURI points at the
+defunct Irys mutable txn `6MqM65yemqQpjVe4rCGxEJfsVA4dJszFhL3suzPGzH56`.
+
+**Recovery is straightforward**:
+1. Run `migrate-from-defunct-pinner.ts` with `manifests/mibera-main.example.yaml`
+2. Operator signs ONE `setBaseURI` tx pointing Mibera at the new CDN prefix
+3. CloudFront invalidate; marketplaces re-index
+
+Full plan: `grimoires/loa/cultivations/mibera/cutover-plan.md` (in
+micodex-studio's grimoires).
+
+The FRACTURED V1-V10 contracts are deployed but **unminted** (verified on-chain
+2026-04-27: totalSupply reverts with `OwnerQueryForNonexistentToken`). They
+have no live tokens to break and are NOT part of this incident response.
+
 ## Construct mapping
 
 | Script piece | Maps to construct skill |

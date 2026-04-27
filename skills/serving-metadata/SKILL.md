@@ -1,43 +1,59 @@
 ---
 name: serving-metadata
-description: The canonical 0xHoneyJar metadata-serving substrate — Postgres-row-as-source-of-truth, Next.js dynamic route as the wire boundary, CloudFront-fronted thj-assets for image bytes. Documents the pattern + provisions new collections to fit it.
+description: Documents and validates the canonical 0xHoneyJar metadata-serving substrate — Postgres-row-as-source-of-truth, Next.js dynamic route as the wire boundary, CloudFront-fronted thj-assets for image bytes. The architectural reference; staging-recovery is the operational act that targets it.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Bash
 ---
 
 # Serving metadata
 
-Every honeyjar collection's `tokenURI` resolves through the same shape:
+The architectural reference for the orchard's metadata substrate. Three healthy production collections (🃏 Tarot, 🍭 Candies, 🎞️ GIF) prove the pattern; the others are being onboarded to it.
 
 ```
-contract.tokenURI(id)  ──→  honeyroad.xyz/api/{collection}/{id}
+contract.tokenURI(id)  ──→  honeyroad.xyz/api/{collection}/{id}     ◄── ROUTE
                               │
-                              ├─ reads ─→  Postgres `{collection}_metadata` table
-                              │              (row-keyed by tokenid, JSONB metadata)
+                              ├─ reads ─→  Postgres `{collection}_metadata`     ◄── TRUTH
+                              │              (row keyed by tokenid, JSONB metadata)
                               │
-                              └─ image URL ─→  d163aeqznbc6js.cloudfront.net/Mibera/...
+                              └─ image URL ─→  d163aeqznbc6js.cloudfront.net/...  ◄── CACHE
                                                   │
-                                                  └─→  thj-assets S3 (us-west-2)
+                                                  └─→  thj-assets S3 (us-west-2)   ◄── BYTES
 ```
 
-This is the soil the orchard tends. Every existing collection follows it (Tarot, VM_Mishadows, Candies, GIF). New collections joining the orchard provision against this pattern by default.
+This is not "an" architecture — it's *the* architecture. Documented here so onboarding a new collection is a 4-step recipe, not an invention.
 
 ## When to use
 
-- A new collection is being onboarded to the orchard (post-mint, pre-baseURI-set)
-- A collection currently on a fragile substrate (IPFS, dead vendor) is migrating into the canonical pattern
-- An existing collection's metadata schema is changing and the route needs updating
-- A drift-detection pass found a route returning stale data despite DB updates (CloudFront cache invalidation)
+- Verifying that a collection (existing or new) follows the canonical pattern
+- Auditing a collection's substrate health across all three layers
+- Onboarding a new collection — emit the schema migration + route file as scaffolding
+- Surfacing drift when a collection deviates (e.g. metadata hosted on IPFS, images on a different CDN)
 
 ## When NOT to use
 
-- Per-token graft mutation — that's `grafting-traits` (writes to existing table; route already serves)
-- Bulk image uploads — that's `pinning-to-freeside` (writes to thj-assets; route reads URLs)
-- The contract uses `setTokenURI(id, uri)` per-token (not setBaseURI prefix) — incompatible substrate, route a different way
+- Per-token graft mutation — that's `grafting-traits` (writes to existing table)
+- Active recovery from a defunct source — that's `staging-recovery` (this skill is the *destination shape*; staging-recovery is the *act of getting data there*)
+- Bulk image uploads — `pinning-to-freeside` handles bytes; this skill verifies metadata references them correctly
+
+## Workflow — auditing a collection against the pattern
+
+1. **Read the contract's tokenURI shape.** Either via on-chain `tokenURI(sampleId)` (cast / viem) or via storage slot if the function reverts. Confirm the URI is a prefix + tokenId concatenation (setBaseURI pattern).
+
+2. **Confirm the route is alive.** HTTP GET the prefix + sampleIds (1, mid, last). Each must return 200 with valid JSON containing `name`, `image`, `attributes` minimum.
+
+3. **Trace to Postgres.** The route file (e.g. `mibera-honeyroad/app/api/{collection}/[tokenId]/route.ts`) MUST query a Drizzle table. Confirm: schema entry exists (`{collection}Metadata`), table is populated, indexed by `tokenid`.
+
+4. **Trace image URLs to operator-controlled CDN.** Sampled metadata's `image:` field MUST point to `d163aeqznbc6js.cloudfront.net` or `assets.mibera.io` (operator-controlled). **Refuse** image URLs pointing at `ipfs://`, `ar://`, or third-party gateways. Surface as drift; route to `staging-recovery` to fix.
+
+5. **Confirm CDN serves the image.** HEAD request to image URL. Must return 200 with `Cache-Control: public, max-age=31536000` (immutable assets) or `max-age=3600` (mutable metadata).
+
+6. **Emit the audit Verdict.** Per layer (route / Postgres / CDN), report passed/failed. Healthy = all three green.
 
 ## Workflow — provisioning a new collection
 
-1. **Author the Drizzle schema entry.** Add to `mibera-honeyroad/lib/db/schema/index.ts`:
+For onboarding (new collection, or migrating one off fragile substrate):
+
+1. **Author the Drizzle schema entry** in `mibera-honeyroad/lib/db/schema/index.ts`:
    ```typescript
    export const {collection}Metadata = pgTable("{collection}_metadata", {
      id: bigint({ mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
@@ -50,9 +66,9 @@ This is the soil the orchard tends. Every existing collection follows it (Tarot,
    ]);
    ```
 
-2. **Generate + apply the Drizzle migration.** Standard mibera-honeyroad workflow.
+2. **Generate + apply Drizzle migration.** Standard mibera-honeyroad workflow.
 
-3. **Author the dynamic route.** New file `mibera-honeyroad/app/api/{collection}/[tokenId]/route.ts`:
+3. **Author the dynamic route** at `mibera-honeyroad/app/api/{collection}/[tokenId]/route.ts`:
    ```typescript
    import { NextRequest, NextResponse } from "next/server";
    import { db, schema } from "@/lib/db/drizzle";
@@ -69,66 +85,61 @@ This is the soil the orchard tends. Every existing collection follows it (Tarot,
    }
    ```
 
-4. **Validate metadata image URLs.** Every row's `metadata.image` must resolve through CloudFront (`d163aeqznbc6js.cloudfront.net`) or another operator-controlled CDN. **No `ipfs://` or `ar://` schemes** — those break the substrate guarantee.
+4. **Hand to `staging-recovery`** for population (recover existing data + bulk-load Postgres + smoke-test).
 
-5. **Set Cache-Control headers.** Default for metadata routes:
-   - `Cache-Control: public, max-age=3600, stale-while-revalidate=86400` (1h fresh, 1d stale-OK)
-   - Mutates allowed: per-graft DB write + targeted CloudFront invalidation propagates within minutes
-
-6. **Verify route returns valid metadata.** Probe `{1, mid, last}` tokenIds; all must 200 with `name` + `image` + `attributes` (when applicable).
-
-7. **Hand to `rotating-baseURI`** for the on-chain pointer rotation if this is a migration/cutover.
-
-## Workflow — onboarding existing data
-
-For collections that already have metadata on another substrate (IPFS, Irys, ad-hoc S3):
-
-1. Run `recovering-metadata` to pull existing metadata into a local manifest
-2. Re-point each metadata's `image:` field to the canonical CDN path (replace ipfs:// or ar:// with cloudfront URLs)
-3. Bulk-insert into the new Drizzle table
-4. Verify route serves expected content
-5. Hand to `rotating-baseURI` for the cutover
+5. **Hand to `rotating-baseURI`** for the on-chain pointer cutover.
 
 ## Output shape
 
-The skill emits an artifact describing the provisioned substrate:
-
 ```yaml
-# grimoires/{product}/serving/{collection}.yaml
+# grimoires/{product}/serving/{collection}.yaml — audit artifact
 collection: <name>
 contract_address: 0x...
-db_table: {collection}_metadata
-db_row_count: 10000
-api_route: /api/{collection}/[tokenId]
-public_url_prefix: https://www.honeyroad.xyz/api/{collection}/
-image_cdn_prefix: https://d163aeqznbc6js.cloudfront.net/Mibera/{path}/
-sample_verifications:
-  - tokenId: 1
-    http_status: 200
-    has_name: true
-    has_image: true
-    image_resolves: true
-provisioned_at: <ISO>
+canonical_pattern: setBaseURI
+
+substrate:
+  route:
+    expected: https://www.honeyroad.xyz/api/{collection}/[tokenId]
+    actual: <on-chain prefix>
+    matches: true | false
+    sample_responses: [{tokenId: 1, status: 200, hash: ...}, ...]
+  postgres:
+    table: {collection}_metadata
+    schema_entry: lib/db/schema/index.ts:LINE
+    row_count: 10000
+    populated: true | false
+  cdn:
+    image_prefix: https://d163aeqznbc6js.cloudfront.net/Mibera/...
+    sample_image_resolves: true
+    cache_control: "public, max-age=31536000, immutable"
+
+drift:
+  - layer: route
+    issue: "tokenURI returns gateway.irys.xyz/... not honeyroad"
+    severity: high
+    proposed_fix: "run staging-recovery; rotating-baseURI"
+
+verdict: healthy | degraded | broken
 ```
 
 ## Anti-patterns
 
-- **Mixing storage backends in metadata image URLs.** Some images on CDN, some on IPFS, some on Arweave = three failure modes. Pick one (CloudFront), enforce it.
-- **Forgetting to invalidate CloudFront on mutation.** Route serves new data immediately, but CDN edge nodes hold stale for up to 1h until invalidated. Every graft must trigger invalidation for the affected token's image (and metadata if cached at edge).
-- **Returning route 500s on missing data.** Return 404 — marketplaces interpret 404 as "this token doesn't exist," 500 as "server is broken." Different signals.
+- **Mixing storage backends in metadata image URLs.** Some images on CDN, some on IPFS, some on Arweave — three failure modes, three SLAs to track. Pick one (CloudFront), enforce it. Drift surfaces here loud.
+- **Forgetting CloudFront invalidation on mutation.** Postgres reflects new data immediately; CDN edge nodes hold stale up to 1h until invalidated. Every graft must trigger invalidation for affected images and any cached metadata.
+- **Returning route 500s on missing data.** Return 404. Marketplaces interpret 404 as "no token," 500 as "server broken." Different signals; different downstream behavior.
 - **Hardcoding the CDN URL.** Use env-config (`THJ_CDN_BASE`) so the substrate can rotate independently of the route code.
-- **Over-formatting in the route.** Some honeyroad routes (e.g. quiz/[tokenId]) reformat attributes (lowercase, etc.) — that's a per-collection concern. The default route is straight passthrough; reformatting is opt-in.
+- **Confusing serving-metadata with staging-recovery.** This skill describes the substrate; staging-recovery is the act of preparing data for it. They compose; they aren't substitutes.
 
 ## Composes with
 
-- **Upstream**: `recovering-metadata` (populates the table) · `pinning-to-freeside` (uploads images that metadata references)
-- **Downstream**: `rotating-baseURI` (cuts the contract over to this route) · `grafting-traits` (writes to this table for per-token mutations) · `verifying-mutation` (reads from this route to confirm graft landing)
-- **Lateral**: `cultivating-cycle` (cycle plans reference which collections are on this substrate)
+- **Reference for**: `staging-recovery` (target shape) · `tending-storage` (substrate health audit) · new-collection onboarding flows
+- **Composes with**: `pinning-to-freeside` (image bytes), `rotating-baseURI` (the cutover that points the contract at this substrate), `grafting-traits` (writes mutations into this substrate's Postgres tier)
+- **Reference contracts**: 🃏 Tarot (`/api/quiz/[tokenId]`), 🍭 Candies (`/api/metadata/drug/[tokenId]`), 🎞️ GIF (`/api/gif/[tokenId]`) — all three serve as the canonical examples to mirror
 
 ## Voice
 
-This skill is the *substrate vocabulary* of the orchard. Burbank's voice describes it as:
+LUTHER BURBANK speaking through `serving-metadata` is **the orchard's surveyor**. Walks the layers; names what each does; refuses to confuse them.
 
-> "The soil is layered. Postgres holds the seeds — every token's metadata is a row, indexed by id. The route is the gardener's hand — pulls a row, formats it, hands it to the marketplace. CloudFront is the orchard's air — caches every leaf at the edge, refreshes when we tell it. None of these layers is fragile alone. The orchard's discipline is keeping them in their lanes — Postgres for truth, route for shape, CDN for speed."
+> "The orchard has three layers under every healthy tree. Postgres holds the seed — every token's metadata is a row, indexed by id. The route is the gardener's hand — pulls a row, formats it, hands it to the marketplace. CloudFront is the orchard's air — caches every leaf at the edge, refreshes when we tell it. None of these layers is fragile alone. The discipline is keeping them in their lanes — Postgres for truth, route for shape, CDN for speed."
 
-The pattern is canonical because it's been proven across four collections (Tarot, VM, Candies, GIF) without rework. The fifth (Mibera main) is being onboarded into it as we speak.
+The pattern is canonical because it's been proven across three healthy collections (Tarot, Candies, GIF) without rework. Mibera main and FRACTURED V1–V10 are being onboarded to it now.

@@ -2,23 +2,23 @@ slug: serving-metadata
 name: Serving Metadata
 
 description: |
-  Use this skill IF a new collection needs to join the canonical 0xHoneyJar
-  metadata-serving substrate (Postgres row + Next.js dynamic route + CloudFront
-  CDN), or a migration from fragile storage (IPFS, Irys, ad-hoc S3) into the
-  canonical pattern. Documents and provisions the substrate.
+  Use this skill IF you need to AUDIT or DOCUMENT a collection's substrate
+  against the canonical Postgres-route-CDN pattern, or onboard a new collection
+  to that pattern. The architectural reference; staging-recovery is the act
+  that targets it.
 version: 0.1.0
 
 triggers:
-  - "serve metadata"
-  - "provision metadata route"
-  - "onboard collection"
-  - "set up metadata table"
+  - "audit the substrate"
+  - "is this collection canonical"
   - "/tend serve"
+  - "verify serving layers"
+  - "onboard collection to canonical pattern"
 
 capabilities:
   model_tier: sonnet
   danger_level: safe
-  effort_hint: medium
+  effort_hint: small
   downgrade_allowed: true
   execution_hint: sequential
   requires:

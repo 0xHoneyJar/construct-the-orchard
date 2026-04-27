@@ -7,7 +7,9 @@ allowed-tools: Read, Write, Edit, Bash
 
 # Pinning to Freeside
 
-Vendor implementation for the **primary** pin in the-orchard's dual-pin policy. Freeside is Honey Jar's own infrastructure — operator hint per seed proposal: this is the soil, not a vendor. Freeside-first because we control the operational continuity (mibera incident lesson: external services go down).
+Vendor implementation for the **primary** pin in the-orchard's dual-pin policy. Freeside-first because we control the operational continuity (mibera incident lesson: external services go down).
+
+> **Vocabulary note**. "Freeside" in the-orchard's vocabulary is the *role* — Honey Jar's first-party storage soil. The *backend impl* today is `thj-assets` S3 + CloudFront (`d163aeqznbc6js.cloudfront.net`); Freeside proper is the billing/settlement layer (per `loa-dixie/knowledge/sources/freeside-api-reference.md`). The skill name is preserved because Freeside-as-soil is operator vocabulary; the `FreesideClient` interface is vendor-agnostic, so when a true Freeside metadata API lands the swap is one impl deep. Configure backend via `FREESIDE_BACKEND` env (default: `thj-assets`).
 
 ## Trigger
 
@@ -33,13 +35,13 @@ Vendor implementation for the **primary** pin in the-orchard's dual-pin policy. 
 
 1. **Validate input.** Required: `tokenId`, `collection`, `metadata` (JSON), `image` (path or buffer). Optional: `imageHash` (sha256, computed if omitted).
 
-2. **Authenticate.** Read `FREESIDE_API_KEY` from env. If missing, refuse and emit a configuration Verdict (severity: high, blocks the dual-pin pass).
+2. **Resolve backend.** Read `FREESIDE_BACKEND` env: one of `thj-assets` (default — S3 + CloudFront), `freeside-api` (future), or operator-extension. Each backend implements the same `FreesideClient` interface. Auth credentials per backend (`AWS_ACCESS_KEY_ID_VM` + `AWS_SECRET_ACCESS_KEY_VM` for thj-assets; `FREESIDE_API_KEY` for freeside-api). If credentials missing, refuse and emit configuration Verdict (severity: high, blocks the dual-pin pass).
 
-3. **Upload image first.** POST image to `${FREESIDE_API_URL}/upload` with `Content-Type: application/octet-stream` and `X-Freeside-Path: collections/{collection}/images/{tokenId}.{ext}`. Receive `{ url, hash }`. Verify `hash` matches local `imageHash`.
+3. **Upload image first.** Send image bytes via the configured backend. For `thj-assets`: PUT to `s3://thj-assets/{collection}/migrated/{tokenId}.{ext}` with `CacheControl: public, max-age=31536000, immutable`; receive `{ url, hash }` where `url` is `${THJ_CDN_BASE}/{collection}/migrated/{tokenId}.{ext}` (default CDN base: `https://d163aeqznbc6js.cloudfront.net`). Verify `hash` matches local `imageHash`.
 
 4. **Substitute image URL into metadata.** Replace any placeholder `image:` field in the metadata JSON with the freeside URL from step 3.
 
-5. **Upload metadata.** POST metadata to `${FREESIDE_API_URL}/upload` with `Content-Type: application/json` and `X-Freeside-Path: collections/{collection}/metadata/{tokenId}.json`. Receive `{ url, hash }`.
+5. **Upload metadata.** Send the JSON body via the configured backend. For `thj-assets`: PUT to `s3://thj-assets/{collection}/migrated/{tokenId}.json` with `Content-Type: application/json`. Receive `{ url, hash }`.
 
 6. **Return URI.** The returned `url` is the freeside metadata URL — what gets recorded in `pins/{collection}.yaml` as `freeside_url` and (eventually) becomes the token's on-chain `tokenURI` after a `protocol` call.
 
@@ -61,8 +63,9 @@ interface FreesidePinResult {
 
 - **Trusting the upload response without hash verification.** A successful HTTP 200 means the request landed; hash verification means the bytes match. Always verify.
 - **Pinning the metadata before the image.** Metadata references the image URL. If you pin metadata first, the image URL is a placeholder — the metadata is then immediately stale. Image first, always.
-- **Hardcoding `https://freeside.honeyjar.io/...` URLs.** Environment-configured (`FREESIDE_API_URL`). Honey Jar may stand up regional or production-vs-staging endpoints later.
-- **Treating Freeside like a vendor.** It's the soil. Don't speak about it like AWS S3 in operator-facing output.
+- **Hardcoding backend URLs.** Environment-configured (`THJ_CDN_BASE`, `FREESIDE_API_URL`, etc., per backend). Honey Jar may stand up regional or production-vs-staging endpoints later, or migrate the backend entirely.
+- **Treating Freeside like a vendor.** It's the soil. Don't speak about it like AWS S3 in operator-facing output — even though S3 is what powers it today.
+- **Hard-coupling to one backend.** The `FreesideClient` interface is vendor-agnostic. If you write code that assumes thj-assets path conventions inside another skill, you've broken the interface. Always go through the skill.
 
 ## Composes with
 

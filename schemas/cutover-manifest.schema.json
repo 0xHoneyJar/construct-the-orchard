@@ -1,0 +1,358 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/0xHoneyJar/construct-the-orchard/schemas/cutover-manifest.schema.json",
+  "title": "Cutover Manifest",
+  "description": "Declarative input for the orchard's defunct-pinner cutover workflow. Authored 2026-04-27 against the Mibera mainnet incident; designed to parameterize across collections (FRACTURED activations, partner sunsets, micodex-studio exports). Consumed by `staging-recovery`, `serving-metadata`, and `rotating-baseURI` skills.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "collection",
+    "contract",
+    "token_range",
+    "source_of_truth",
+    "rotation_target",
+    "acceptance"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Manifest schema version. Bump major on breaking changes."
+    },
+    "manifest_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+      "description": "Unique slug for this cutover. Convention: {collection-slug}-{YYYY-MM-DD}. E.g. `mibera-2026-04-27`."
+    },
+    "authored": {
+      "type": "object",
+      "properties": {
+        "by": { "type": "string", "description": "Operator or agent identifier." },
+        "at": { "type": "string", "format": "date-time" },
+        "via": { "type": "string", "description": "Skill or workflow that produced this manifest. E.g. `staging-recovery` or operator-authored." }
+      }
+    },
+    "collection": {
+      "type": "object",
+      "required": ["name", "slug"],
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable collection name. E.g. `Mibera`." },
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+          "description": "URL-safe identifier. Used for route paths (`/api/{slug}/[tokenId]`) and DB table prefix."
+        },
+        "description": { "type": "string" }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "required": ["address", "chain", "pattern"],
+      "properties": {
+        "address": {
+          "type": "string",
+          "pattern": "^0x[a-fA-F0-9]{40}$",
+          "description": "Contract address."
+        },
+        "chain": {
+          "type": "string",
+          "enum": ["ethereum", "berachain", "base", "optimism", "arbitrum", "polygon"],
+          "description": "EVM chain. Used to select RPC endpoint + alchemy network identifier."
+        },
+        "rpc_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Override RPC. Default per-chain: ethereum→cloudflare-eth, berachain→rpc.berachain.com, etc."
+        },
+        "pattern": {
+          "type": "string",
+          "enum": ["setBaseURI", "setBaseUri", "setTokenURI"],
+          "description": "Contract's URI authority pattern. setBaseURI/setBaseUri = collection-wide prefix (per-token mutation = file/row update, no contract call). setTokenURI = per-token URI (every mutation needs contract call)."
+        },
+        "authority": {
+          "type": "string",
+          "enum": ["onlyOwner", "URI_SETTER_ROLE", "AccessControl", "DEFAULT_ADMIN_ROLE"],
+          "default": "onlyOwner",
+          "description": "Access control modifier on the URI mutation function."
+        },
+        "owner_address": {
+          "type": "string",
+          "pattern": "^0x[a-fA-F0-9]{40}$",
+          "description": "Address with authority to call the URI setter. For onlyOwner contracts, this is the contract owner. For role-based, this is the granted address."
+        },
+        "emits_batch_metadata_update": {
+          "type": "boolean",
+          "default": false,
+          "description": "Does the URI setter auto-emit EIP-4906 BatchMetadataUpdate? Mibera contract: true. FracturedMibera: false. Affects post-rotation propagation strategy."
+        }
+      }
+    },
+    "token_range": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0, "description": "First tokenId, inclusive." },
+        "end": { "type": "integer", "minimum": 0, "description": "Last tokenId, inclusive. For Mibera: 10000." }
+      }
+    },
+    "source_of_truth": {
+      "type": "object",
+      "required": ["type"],
+      "description": "Where to read traits + image hashes from. Sovereign sources first; third-party fallbacks last.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["mibera-codex", "supabase-table", "git-repo", "operator-backup", "alchemy-cache", "irys-direct"],
+          "description": "Source backend type. mibera-codex: per-token .md files with YAML frontmatter. supabase-table: Postgres table keyed by tokenid. git-repo: arbitrary repo with structured per-token data. operator-backup: local filesystem. alchemy-cache: NFT API getNFTMetadata. irys-direct: live Irys gateway probe (best-effort, often dead)."
+        },
+        "path": {
+          "type": "string",
+          "description": "Filesystem path or URL to the canonical source. For mibera-codex: path to repo root. For git-repo: clone URL + path. For supabase-table: connection string."
+        },
+        "lookup_pattern": {
+          "type": "string",
+          "description": "Template for resolving per-token source. E.g. `miberas/{tokenId:04d}.md` for mibera-codex. {tokenId} substitutes raw; {tokenId:04d} zero-pads to 4 digits."
+        },
+        "hash_index": {
+          "type": "string",
+          "description": "Optional path to JSON mapping tokenId → image hash. For mibera-codex: `_codex/data/mibera-image-urls.json`."
+        },
+        "table": {
+          "type": "string",
+          "description": "When type=supabase-table: table name."
+        },
+        "additional_sources": {
+          "type": "array",
+          "items": { "$ref": "#/properties/source_of_truth" },
+          "description": "Fallback sources in priority order. Tried if primary source fails for a given tokenId."
+        }
+      }
+    },
+    "image_source": {
+      "type": "object",
+      "description": "How to compose the image URL inside metadata JSON. Decoupled from source_of_truth so the trait-data source and image-host can differ.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["s3-direct", "cloudfront", "ipfs", "external-url"],
+          "default": "s3-direct"
+        },
+        "url_pattern": {
+          "type": "string",
+          "description": "Template with {hash} or {tokenId} substitution. For Mibera: `https://thj-assets.s3.us-west-2.amazonaws.com/reveal_phase1_images/{hash}.png`."
+        },
+        "hash_source": {
+          "type": "string",
+          "enum": ["frontmatter", "hash_index", "compute"],
+          "description": "Where the {hash} value comes from. frontmatter: in the per-token source. hash_index: separate JSON file. compute: hash the image bytes."
+        }
+      }
+    },
+    "rotation_target": {
+      "type": "object",
+      "required": ["new_base_uri", "old_base_uri", "service"],
+      "description": "Where the contract's baseURI should point AFTER rotation, and what's getting replaced.",
+      "properties": {
+        "new_base_uri": {
+          "type": "string",
+          "format": "uri",
+          "description": "New baseURI to call setBaseURI with. MUST end with `/` for ERC-721 path concatenation. E.g. `https://www.honeyroad.xyz/api/mibera/`."
+        },
+        "old_base_uri": {
+          "type": "string",
+          "format": "uri",
+          "description": "Current baseURI. Preserved for rollback. Read on-chain via tokenURI(1) - tokenId substring."
+        },
+        "service": {
+          "type": "string",
+          "enum": ["honeyroad-api", "static-cdn", "ipfs", "external-host"],
+          "description": "What kind of endpoint backs the new baseURI. honeyroad-api: Next.js dynamic route. static-cdn: pre-built JSON files served via CDN. ipfs: pinned content."
+        },
+        "route_path": {
+          "type": "string",
+          "description": "When service=honeyroad-api: the dynamic route path. E.g. `app/api/mibera/[tokenId]/route.ts`."
+        }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "description": "Where the canonical metadata is staged for serving. NULL when service=static-cdn or ipfs.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["postgres-drizzle", "supabase", "static-s3", "redis"],
+          "default": "postgres-drizzle"
+        },
+        "table": {
+          "type": "string",
+          "description": "Table name. Convention: `{collection_slug}_metadata`. E.g. `mibera_metadata`."
+        },
+        "schema_module": {
+          "type": "string",
+          "description": "Drizzle schema module export name. E.g. `miberaMetadata`."
+        },
+        "connection": {
+          "type": "string",
+          "description": "Connection string env var name. E.g. `DATABASE_URL`."
+        }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "required": ["fail_threshold"],
+      "description": "Quality gates. Sprint pauses + surfaces to operator when not met.",
+      "properties": {
+        "fail_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum per-token recovery rate to advance to staging. 0.99 = 99%. Below this, sprint pauses."
+        },
+        "long_tail_filing": {
+          "type": "boolean",
+          "default": true,
+          "description": "When fail_threshold met but not 100%, file unrecoverables as follow-up tickets."
+        },
+        "smoke_samples": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "description": "TokenIds to smoke-test pre-flight. Default: [1, max/4, max/2, 3*max/4, max]."
+        },
+        "p99_latency_ms": {
+          "type": "number",
+          "default": 300,
+          "description": "Maximum p99 latency for the served route. SLA target."
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "description": "Rollback configuration if post-rotation verification fails.",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["restore_old_base_uri", "snapshot", "manual"],
+          "default": "restore_old_base_uri",
+          "description": "restore_old_base_uri: cast send setBaseURI back to old_base_uri (may restore broken-but-original state). snapshot: requires a preserved alternative serving endpoint. manual: surface to operator for ad-hoc resolution."
+        },
+        "rollback_uri": {
+          "type": "string",
+          "format": "uri",
+          "description": "When strategy=snapshot: the alternative URI to rotate to."
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "description": "Optional scope hints for the workflow runner.",
+      "properties": {
+        "in_scope_skills": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Subset of orchard skills to invoke. Default: all relevant for this manifest's pattern."
+        },
+        "out_of_scope": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Explicit non-goals for this cutover. Documented for transparency."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0.0",
+      "manifest_id": "mibera-2026-04-27",
+      "authored": {
+        "by": "soju",
+        "at": "2026-04-27T22:00:00Z",
+        "via": "operator-authored"
+      },
+      "collection": {
+        "name": "Mibera",
+        "slug": "mibera",
+        "description": "10,000 generative dNFTs in a neochibi aesthetic with randomized cosmetics inspired by Rave Cultures."
+      },
+      "contract": {
+        "address": "0x6666397DFe9a8c469BF65dc744CB1C733416c420",
+        "chain": "berachain",
+        "pattern": "setBaseURI",
+        "authority": "onlyOwner",
+        "emits_batch_metadata_update": true
+      },
+      "token_range": { "start": 1, "end": 10000 },
+      "source_of_truth": {
+        "type": "mibera-codex",
+        "path": "~/Documents/GitHub/mibera-codex",
+        "lookup_pattern": "miberas/{tokenId:04d}.md",
+        "hash_index": "_codex/data/mibera-image-urls.json"
+      },
+      "image_source": {
+        "type": "s3-direct",
+        "url_pattern": "https://thj-assets.s3.us-west-2.amazonaws.com/reveal_phase1_images/{hash}.png",
+        "hash_source": "hash_index"
+      },
+      "rotation_target": {
+        "new_base_uri": "https://www.honeyroad.xyz/api/mibera/",
+        "old_base_uri": "https://gateway.irys.xyz/mutable/6MqM65yemqQpjVe4rCGxEJfsVA4dJszFhL3suzPGzH56/",
+        "service": "honeyroad-api",
+        "route_path": "app/api/mibera/[tokenId]/route.ts"
+      },
+      "persistence": {
+        "type": "postgres-drizzle",
+        "table": "mibera_metadata",
+        "schema_module": "miberaMetadata",
+        "connection": "DATABASE_URL"
+      },
+      "acceptance": {
+        "fail_threshold": 0.99,
+        "long_tail_filing": true,
+        "smoke_samples": [1, 100, 1000, 5000, 10000],
+        "p99_latency_ms": 300
+      },
+      "rollback": {
+        "strategy": "restore_old_base_uri"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "manifest_id": "apdao-stub",
+      "authored": {
+        "by": "soju",
+        "at": "2026-04-27T22:00:00Z",
+        "via": "reusability-stub"
+      },
+      "collection": {
+        "name": "apdao (TBD)",
+        "slug": "apdao",
+        "description": "Stub manifest for apdao cutover. Content + chain TBD; this manifest validates the schema works for non-mibera collection shape."
+      },
+      "contract": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "chain": "ethereum",
+        "pattern": "setBaseURI",
+        "authority": "onlyOwner"
+      },
+      "token_range": { "start": 0, "end": 0 },
+      "source_of_truth": {
+        "type": "supabase-table",
+        "table": "apdao_metadata"
+      },
+      "image_source": {
+        "type": "cloudfront",
+        "url_pattern": "https://d163aeqznbc6js.cloudfront.net/apdao/{tokenId}.png",
+        "hash_source": "compute"
+      },
+      "rotation_target": {
+        "new_base_uri": "https://www.honeyroad.xyz/api/apdao/",
+        "old_base_uri": "https://example.com/old/",
+        "service": "honeyroad-api",
+        "route_path": "app/api/apdao/[tokenId]/route.ts"
+      },
+      "acceptance": {
+        "fail_threshold": 0.99
+      }
+    }
+  ]
+}

@@ -14,7 +14,7 @@ triggers:
 
 capabilities:
   model_tier: sonnet
-  danger_level: caution
+  danger_level: moderate
   effort_hint: small
   downgrade_allowed: true
   execution_hint: sequential

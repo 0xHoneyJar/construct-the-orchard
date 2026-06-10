@@ -89,7 +89,7 @@ scripts:
         required: false
         hint: "https://pinata.cloud — required when --ipfs-pinner=pinata"
 
-    danger_level: caution
+    danger_level: moderate
     # Touches multiple external APIs (Alchemy, AWS S3, IPFS pinner).
     # Rate-limit-aware (--concurrency flag). Idempotent re-runs land same content
     # at same paths under thj-assets prefix — safe to re-run on partial failures.

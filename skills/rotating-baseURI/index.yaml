@@ -18,7 +18,7 @@ triggers:
 
 capabilities:
   model_tier: sonnet
-  danger_level: caution     # composes a contract-write tx; the actual write happens elsewhere
+  danger_level: moderate     # composes a contract-write tx; the actual write happens elsewhere
   effort_hint: medium
   downgrade_allowed: false
   execution_hint: sequential

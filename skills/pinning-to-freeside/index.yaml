@@ -15,7 +15,7 @@ triggers:
 
 capabilities:
   model_tier: sonnet
-  danger_level: caution     # touches storage infra; rate-limit-aware
+  danger_level: moderate     # touches storage infra; rate-limit-aware
   effort_hint: small
   downgrade_allowed: true
   execution_hint: sequential

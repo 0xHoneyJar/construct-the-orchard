@@ -17,7 +17,7 @@ triggers:
 
 capabilities:
   model_tier: sonnet
-  danger_level: caution     # touches Postgres + multiple external APIs
+  danger_level: moderate     # touches Postgres + multiple external APIs
   effort_hint: large
   downgrade_allowed: false
   execution_hint: sequential

@@ -16,7 +16,7 @@ triggers:
 
 capabilities:
   model_tier: sonnet
-  danger_level: caution     # touches multiple external APIs; rate-limit-aware
+  danger_level: moderate     # touches multiple external APIs; rate-limit-aware
   effort_hint: large
   downgrade_allowed: false
   execution_hint: sequential
